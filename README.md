@@ -5,7 +5,7 @@ The model uses assymetrical architecture in encoder and decoder layers.
 The encoder consists of multi-scale encoder block(s) and temporal dilated reconstruction decoder layers.
 
 ## 🛠️ Architecture Design
-![architecture design](../assets/architecture.png)
+![architecture design](/assets/architecture.png)
 
 
 ## 📚 References
