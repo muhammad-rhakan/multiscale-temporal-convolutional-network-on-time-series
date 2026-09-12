@@ -1,56 +1,74 @@
 import numpy as np
 import tensorflow as tf
 import keras
+import os
 
 from keras.layers import (
-    Model, Layer,
+    Layer,
     Conv1D, Conv1DTranspose,
     Activation, Dropout, LayerNormalization,
     Concatenate)
+from keras.models import Model
+
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Hides INFO and WARNING logs
+
 
 
 class Backbone(Layer):
-    def __init__(self, filters, kernel_size, dilation_rate, dropout_rate=0.2):
-        super().__init__()
-        self.conv = Conv1D(filters=filters, kernel_size=kernel_size, padding='causal', dilation_rate=dilation_rate)
-        self.gelu = Activation('gelu')
-        self.dropout = Dropout(dropout_rate)
+    def __init__(self, filters, kernel_size, dilation_rate, dropout_rate=0.2, **kwargs):
+        super().__init__(**kwargs)
+        self.conv1 = Conv1D(filters=filters, kernel_size=kernel_size, padding='causal', dilation_rate=dilation_rate)
+        self.conv2 = Conv1D(filters=filters, kernel_size=kernel_size, padding='causal', dilation_rate=dilation_rate)
+        self.gelu1 = Activation('gelu')
+        self.gelu2 = Activation('gelu')
+        self.dropout1 = Dropout(dropout_rate)
+        self.dropout2 = Dropout(dropout_rate)
 
-    def call(self, inputs):
-        x = self.conv(inputs)
-        x = self.gelu(x)
-        return self.dropout(x)
+    def call(self, inputs, training=None):
+        # First block
+        x = self.conv1(inputs)
+        x = self.gelu1(x)
+        x = self.dropout1(x, training=training)
+        # Second block
+        x = self.conv2(x)
+        x = self.gelu2(x)
+        return self.dropout2(x, training=training)
 
 
 class MSTCN_EncoderBlock(Layer):
     def __init__(self, dropout_rate=0.2):
         super().__init__()
-        self.branch1_bb1 = Backbone(filters=32, kernel_size=3, dilation_rate=1)
-        self.branch1_bb2 = Backbone(filters=64, kernel_size=3, dilation_rate=2)
+        self.size1 = Conv1D(filters=32, kernel_size=1, padding='same', activation='relu')
 
-        self.branch2_conv = Conv1D(filters=32, kernel_size=1, padding='same')
+        self.size3_1 = Backbone(filters=32, kernel_size=3, dilation_rate=1)
+        self.size3_2 = Backbone(filters=64, kernel_size=3, dilation_rate=2)
 
-        self.branch3_bb1 = Backbone(filters=32, kernel_size=5, dilation_rate=1)
-        self.branch3_bb2 = Backbone(filters=64, kernel_size=5, dilation_rate=2)
+        self.size5_1 = Backbone(filters=32, kernel_size=5, dilation_rate=1)
+        self.size5_2 = Backbone(filters=64, kernel_size=5, dilation_rate=2)
 
         self.concat_branches = Concatenate(axis=-1)
         self.compress = Conv1D(filters=16, kernel_size=1, padding='same', activation='relu')
 
     def call(self, inputs):
-        b1 = self.branch1_bb1(inputs)
-        b1 = self.branch1_bb2(b1)
+        # Feature extraction size 1
+        s1 = self.size1(inputs)
 
-        b2 = self.branch2_conv(inputs)
+        # Feature extraction size 3
+        s3 = self.size3_1(inputs)
+        s3 = self.size3_2(s3)
 
-        b3 = self.branch3_bb1(inputs)
-        b3 = self.branch3_bb2(b3)
+        # Feature extraction size 5
+        s5 = self.size5_1(inputs)
+        s5 = self.size5_2(s5)
 
-        c = self.concat_branches([b1, b2, b3])
-        return self.compress(c)
+        # Concatenate the outputs of the three branches and compress
+        concat = self.concat_branches([s1, s3, s5])
+        return self.compress(concat)
 
 
-class TCNResidualBlock(tf.keras.Layer):
-    def __init__(self, filters, kernel_size, dilation_rate, decoder=True, activation='relu', dropout=0.2, **kwargs):
+class TCNResidualBlock(Layer):
+    def __init__(self, filters, kernel_size, dilation_rate, activation='relu', dropout=0.2, **kwargs):
         super().__init__(**kwargs)
         self.filters = filters
         self.kernel_size = kernel_size
