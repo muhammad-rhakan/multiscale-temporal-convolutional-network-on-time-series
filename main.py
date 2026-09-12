@@ -1,6 +1,6 @@
 import numpy as np
-from scripts.train_model import train_model
-from scripts.anomaly_detection import flag_anomalies
+from src.train import train_model
+from src.detect import detect_anomalies
 import argparse
 
 
@@ -33,35 +33,34 @@ def main():
         train_ds = data["train_ds"]
         val_ds = data["val_ds"]
         test_ds = data["test_ds"]
-        val_labels = data["val_labels"]
+
         test_labels = data["test_labels"]
 
     #-----------------
     # Train the model
     #-----------------
-    model, history = train_model(train_ds, val_ds, test_ds, val_labels, test_labels)
+    model, history = train_model(train_ds, val_ds)
 
     #--------------------------------------
     # Make predictions and calculate errors
     #--------------------------------------
-    train_predictions = model.predict(train_ds)
-    val_predictions = model.predict(val_ds)
-    test_predictions = model.predict(test_ds)
-
-    train_errors = np.mean(np.square(train_ds - train_predictions), axis=2)
-    val_errors = np.mean(np.square(val_ds - val_predictions), axis=2)
-    test_errors = np.mean(np.square(test_ds - test_predictions), axis=2)
-
+    predictions = model.predict(test_ds)
+    errors = np.mean(np.square(test_ds - predictions), axis=2)
 
     #--------------------------
     # Perform anomaly detection
     #--------------------------
-    result = flag_anomalies(
+    # Get threshold from training error distribution
+    train_predictions = model.predict(train_ds)
+    train_errors = np.mean(np.square(train_ds - train_predictions), axis=2)
+
+    result = detect_anomalies(
         train_errors,
-        test_errors,
+        errors,
         test_labels,
         **kwargs)
-
+    
+    return result
 
 if __name__ == "__main__":
     main()

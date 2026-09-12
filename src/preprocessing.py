@@ -1,9 +1,8 @@
 import pandas as pd
 import numpy as np
-
-from scipy import datasets
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+
 
 # Clean column names and date reformatting
 def clean_data(
@@ -123,6 +122,7 @@ def main():
 
     attack_clean = clean_data(attack)
     attack_fill = fill_missing_timestamps(attack_clean, actuators, sensors, target)
+    
 
     # ----------------
     # 3. Split dataset 
@@ -166,6 +166,16 @@ def main():
         y_val=y_val,
         y_test=y_test)
     print("Preprocessed datasets saved successfully.")
+
+
+    return {
+        "X_train": X_train_transformed,
+        "X_val": X_val_transformed,
+        "X_test": X_test_transformed,
+        "y_train": y_train,
+        "y_val": y_val,
+        "y_test": y_test
+    }
 
 
 if __name__ == "__main__":

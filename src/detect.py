@@ -25,56 +25,63 @@ def calculate_anomaly_scores(mse, labels, eval_points=True):
 
 
 # Use static thresholding to determine the threshold for anomaly detection
-def static_thresholding(anomaly_scores, static_type, n_percentile, k):
+def determine_threshold(anomaly_scores, static_type, n_percentile, k):
     """
     Parameters:
         - anomaly_scores: Anomaly scores calculated from MSE
         - static_type: Type of static thresholding ('percentile' or 'std_dev')
         - n_percentile: Percentile value for thresholding (if static_type is 'percentile')
         - k: Number of standard deviations for thresholding (if static_type is 'std_dev')
-
     """
     if static_type == "percentile":
-        return np.percentile(anomaly_scores, n_percentile)
+        if n_percentile is None or k is not None:
+            raise ValueError("Percentile threshold only requires argument n_percentile")
+        else:
+            return np.percentile(anomaly_scores, n_percentile)
+        
+    elif static_type.isin("std_dev", "gaussian"):
+        if n_percentile is not None or k is None:
+            raise ValueError("Std_Dev threshold only requires argument k")
+        else:
+            return np.mean(anomaly_scores) + k * np.std(anomaly_scores)
+
     else:
-        return np.mean(anomaly_scores) + k * np.std(anomaly_scores)
-
-
+        raise ValueError("Unknown static type")
+    
 
 # Use the threshold to flag anomalies based on the anomaly scores
-def flag_anomalies(
-        train_mse,
-        test_mse,
-        test_labels,
-        eval_points,
-        static_type,
-        n_percentile=None,
-        parameter_k=None):
+def detect_anomalies(
+    test_mse,
+    test_labels,
+    eval_points,
+    static_type=None,
+    n_percentile=None,
+    parameter_k=None,
+    threshold=None,
+    baseline_errors=None):
     """
     Parameters:
-        - train_mse: Mean Squared Error values for the training set as lookup distribution
+        - threshold: Boundary to classify normal/anomalous points.
+                     If threshold hasnt been determined, calculate from baseline errors
+        - baseline_errors: Mean Squared Error values set as lookup distribution, can be training or validation error set
         - test_mse: Mean Squared Error values for the test set
         - test_labels: Ground truth labels for the test set
         - eval_points: Whether to evaluate individual points or aggregated values (window-wise)
         - static_type: Type of static thresholding ('percentile' or 'std_dev')
         - n_percentile: Percentile value for thresholding (if static_type is 'percentile')
         - parameter_k: Number of standard deviations for thresholding (if static_type is 'std_dev')
-
-    Returns:
-        - Dictionary containing the threshold, precision, recall, and F1 score of the anomaly detection
     """
 
-    # Determine a threshold based on the lookup distribution and the specified static thresholding method
-    lookup_distribution = np.mean(train_mse, axis=1)
-    threshold = static_thresholding(lookup_distribution, static_type, n_percentile, parameter_k)
+    if threshold is None:
+        if baseline_errors is None:
+            raise ValueError("Baseline errors required if threshold is not yet determined.")
+        if static_type not in ("percentile", "std_dev", "gaussian"):
+            raise ValueError("static_type must be 'percentile' or 'std_dev' when threshold is not provided.")
+
+        lookup_distribution = np.mean(baseline_errors, axis=1)
+        threshold = determine_threshold(lookup_distribution, static_type, n_percentile, parameter_k)
 
     # Flag anomalies based on the threshold and calculate precision, recall, and F1 score
     anomaly_scores, ground_truth = calculate_anomaly_scores(test_mse, test_labels, eval_points)
-    flags = (anomaly_scores > threshold).astype(int)
 
-    return {
-        "Parameter": f"{n_percentile}%" if static_type == "percentile" else f"{parameter_k} std",
-        "Threshold": round(float(threshold), 4),
-        "Precision": round(precision_score(ground_truth, flags, zero_division=0), 4),
-        "Recall": round(recall_score(ground_truth, flags, zero_division=0), 4),
-        "F1 Score": round(f1_score(ground_truth, flags, zero_division=0), 4)}
+    return (anomaly_scores > threshold).astype(int)
