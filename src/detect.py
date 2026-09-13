@@ -1,7 +1,6 @@
 import seaborn as sns
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.metrics import precision_score, recall_score, f1_score
 
 
 # Use the Mean Squared Error to calculate the anomaly scores
@@ -39,7 +38,7 @@ def determine_threshold(anomaly_scores, static_type, n_percentile, k):
         else:
             return np.percentile(anomaly_scores, n_percentile)
         
-    elif static_type.isin("std_dev", "gaussian"):
+    elif static_type.isin("stddev", "gaussian"):
         if n_percentile is not None or k is None:
             raise ValueError("Std_Dev threshold only requires argument k")
         else:
@@ -54,11 +53,11 @@ def detect_anomalies(
     test_mse,
     test_labels,
     eval_points,
+    threshold=None,
+    reference_errors=None,
     static_type=None,
     n_percentile=None,
-    parameter_k=None,
-    threshold=None,
-    baseline_errors=None):
+    parameter_k=None):
     """
     Parameters:
         - threshold: Boundary to classify normal/anomalous points.
@@ -73,12 +72,12 @@ def detect_anomalies(
     """
 
     if threshold is None:
-        if baseline_errors is None:
+        if reference_errors is None:
             raise ValueError("Baseline errors required if threshold is not yet determined.")
-        if static_type not in ("percentile", "std_dev", "gaussian"):
+        if static_type not in ("percentile", "stddev", "gaussian"):
             raise ValueError("static_type must be 'percentile' or 'std_dev' when threshold is not provided.")
 
-        lookup_distribution = np.mean(baseline_errors, axis=1)
+        lookup_distribution = np.mean(reference_errors, axis=1)
         threshold = determine_threshold(lookup_distribution, static_type, n_percentile, parameter_k)
 
     # Flag anomalies based on the threshold and calculate precision, recall, and F1 score
